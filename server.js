@@ -127,8 +127,8 @@ app.post('/generate-video', async (req, res) => {
         const generation = await client.generations.create({
             prompt,
             model,
-            resolution: "720p", // Adjust resolution as needed
-            duration: "5s"      // Adjust duration as needed
+            resolution: "1080p", // Adjust resolution as needed
+            duration: "10s"      // Adjust duration as needed
         });
         console.log('Video generation started:', generation);
         res.json({ generationId: generation.id, state: generation.state });
