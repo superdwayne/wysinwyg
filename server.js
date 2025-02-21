@@ -11,6 +11,8 @@ const sharp = require('sharp');
 const app = express();
 const PORT = 5007;
 
+console.log('Starting server initialization...');
+
 // Middleware with increased limits
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -98,6 +100,32 @@ async function validateAndOptimizeImage(base64Image) {
     }
 }
 
+// Function to enhance short prompts
+function enhancePrompt(prompt) {
+    // If prompt is already detailed (longer than 30 chars), return as is
+    if (prompt.length > 30) return prompt;
+    
+    // Dictionary of basic enhancements for common subjects
+    const enhancementMap = {
+        'oranges': 'Fresh, juicy oranges arranged on a wooden table with sunlight streaming through a window, creating a warm glow on the citrus fruits',
+        'beach': 'A serene beach scene with gentle waves washing onto golden sand, palm trees swaying in the breeze, and a beautiful sunset on the horizon',
+        'city': 'A modern city skyline at dusk with lights beginning to twinkle in skyscrapers, busy streets below, and a colorful sky transition',
+        'forest': 'A lush, green forest with sunbeams filtering through tall trees, moss-covered stones, and a gentle stream flowing over rocks',
+        'mountains': 'Majestic snow-capped mountains under a clear blue sky, with a winding path leading through alpine meadows filled with wildflowers'
+    };
+    
+    // Check if we have a specific enhancement for this prompt
+    if (enhancementMap[prompt.toLowerCase()]) {
+        console.log(`Enhanced prompt from "${prompt}" to a detailed description`);
+        return enhancementMap[prompt.toLowerCase()];
+    }
+    
+    // Generic enhancement for other short prompts
+    const enhancedPrompt = `A cinematic, detailed view of ${prompt} with beautiful lighting, rich textures, and vibrant colors in a natural setting`;
+    console.log(`Generic enhancement of prompt from "${prompt}" to "${enhancedPrompt}"`);
+    return enhancedPrompt;
+}
+
 // Existing endpoint for image upload and description generation
 app.post('/upload-and-generate-description', async (req, res) => {
     const { image } = req.body;
@@ -115,42 +143,128 @@ app.post('/upload-and-generate-description', async (req, res) => {
     }
 });
 
-// NEW: Endpoint to start video generation via LumaAI
+// FIXED: Improved endpoint to start video generation via LumaAI
 app.post('/generate-video', async (req, res) => {
     try {
-        const { prompt, model = 'ray-2' } = req.body;
+        let { prompt, model = 'ray-2', negative_prompt = '', resolution = "720p", duration = "5s" } = req.body;
+        
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
         }
-        console.log('Received video generation request:', { prompt, model });
-        // Create video generation request using LumaAI's API
-        const generation = await client.generations.create({
+        
+        // Validate and enhance prompt if needed
+        if (prompt.trim().length < 10) {
+            const originalPrompt = prompt;
+            prompt = enhancePrompt(prompt);
+            console.log(`Prompt enhanced from "${originalPrompt}" to "${prompt}"`);
+        }
+        
+        console.log('Video generation request:', { 
+            prompt: prompt.substring(0, 50) + (prompt.length > 50 ? '...' : ''),
+            model, 
+            resolution,
+            duration
+        });
+        
+        // Create video generation request with complete parameters
+        const generationParams = {
             prompt,
             model,
-            resolution: "1080p", // Adjust resolution as needed
-            duration: "10s"      // Adjust duration as needed
+            resolution,
+            duration
+        };
+        
+        // Add negative prompt if provided
+        if (negative_prompt && negative_prompt.trim().length > 0) {
+            generationParams.negative_prompt = negative_prompt;
+        }
+        
+        console.log('Sending request to LumaAI with params:', generationParams);
+        
+        // Make the API request
+        const generation = await client.generations.create(generationParams);
+        
+        console.log('Video generation started:', {
+            id: generation.id,
+            state: generation.state,
+            model: generation.model,
+            created_at: generation.created_at
         });
-        console.log('Video generation started:', generation);
-        res.json({ generationId: generation.id, state: generation.state });
+        
+        res.json({ 
+            generationId: generation.id, 
+            state: generation.state,
+            prompt: prompt,
+            model: generation.model
+        });
     } catch (error) {
         console.error('Error generating video:', error);
-        res.status(500).json({ error: error.message });
+        
+        // Improved error handling
+        let errorMessage = error.message;
+        let errorDetails = {};
+        
+        // Extract API error details if available
+        if (error.error && typeof error.error === 'object') {
+            errorDetails = error.error;
+        }
+        
+        // Suggest solutions based on error type
+        let suggestion = '';
+        if (errorMessage.includes('Invalid request')) {
+            suggestion = 'Try using a more detailed prompt (at least 10-15 words describing the scene in detail)';
+        } else if (errorMessage.includes('rate limit')) {
+            suggestion = 'You may have hit API rate limits. Wait a few minutes before trying again.';
+        } else if (errorMessage.includes('unauthorized')) {
+            suggestion = 'Check your LUMAAI_API_KEY environment variable.';
+        }
+        
+        res.status(500).json({ 
+            error: errorMessage,
+            details: errorDetails,
+            suggestion: suggestion || 'Check LumaAI documentation for proper request format'
+        });
     }
 });
 
-// NEW: Endpoint to poll the status of video generation
+// Enhanced endpoint to poll the status of video generation
 app.get('/video-status/:generationId', async (req, res) => {
     try {
         const { generationId } = req.params;
         if (!generationId) {
             return res.status(400).json({ error: 'Generation ID is required' });
         }
+        
+        console.log(`Checking status for video generation ID: ${generationId}`);
         const status = await client.generations.get(generationId);
-        console.log('Checked video generation status:', status);
+        
+        // Log based on state
+        const stateEmoji = {
+            'pending': '⏳',
+            'processing': '🔄',
+            'completed': '✅',
+            'failed': '❌'
+        };
+        
+        const emoji = stateEmoji[status.state] || '❓';
+        console.log(`${emoji} Video status [${generationId}]: ${status.state}`);
+        
+        if (status.state === 'completed') {
+            console.log(`Video available at: ${status.assets?.video || 'URL not available'}`);
+        } else if (status.state === 'failed') {
+            console.error(`Generation failed: ${status.failure_reason || 'Unknown reason'}`);
+        }
+        
+        // Return enhanced status information
         res.json({
             state: status.state,
             completed: status.state === 'completed',
             videoUrl: status.assets && status.assets.video ? status.assets.video : null,
+            progress: status.progress || null,
+            failureReason: status.failure_reason || null,
+            model: status.model,
+            createdAt: status.created_at,
+            updatedAt: status.updated_at
         });
     } catch (error) {
         console.error('Error checking video status:', error);
@@ -161,4 +275,6 @@ app.get('/video-status/:generationId', async (req, res) => {
 // Start the server
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Video generation endpoint available at: http://localhost:${PORT}/generate-video`);
+    console.log(`Status checking endpoint: http://localhost:${PORT}/video-status/:generationId`);
 });
