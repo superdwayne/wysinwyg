@@ -6,11 +6,10 @@ const Groq = require('groq-sdk');
 const axios = require('axios');
 const FormData = require('form-data');
 const sharp = require('sharp');
-const fs = require("fs");
 
 // Initialize Express app and constants
 const app = express();
-const PORT = 5001;
+const PORT = 5007;
 
 console.log('Starting server initialization...');
 
@@ -34,47 +33,72 @@ Object.entries(requiredEnvVars).forEach(([key, value]) => {
 const client = new LumaAI({ authToken: process.env.LUMAAI_API_KEY });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-
-async function generateImageDescriptionFromBase64(base64Image) {
+// Utility Functions for Image Handling (unchanged)
+async function uploadImageToImgur(base64Image) {
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const formData = new FormData();
+    formData.append('image', base64Data);
+    formData.append('type', 'base64');
     try {
-        const response = await axios.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            {
-                model: "llama-3.2-11b-vision-preview",
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Describe the following image in detail." },
-                            { 
-                                type: "image_url", 
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${base64Image}`
-                                } 
-                            }
-                        ]
-                    }
-                ]
-            },
-            {
-                headers: {
-                    "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-                    "Content-Type": "application/json"
-                }
+        const response = await axios.post('https://api.imgur.com/3/image', formData, {
+            headers: {
+                Authorization: `Client-ID ${requiredEnvVars.IMGUR_CLIENT_ID}`,
+                ...formData.getHeaders()
             }
-        );
-
-       // console.log("Groq API Response:", JSON.stringify(response.data, null, 2));
-        return response.data.choices[0]?.message?.content || "No description available.";
+        });
+        if (!response.data?.data?.link) {
+            throw new Error('Failed to retrieve image URL from Imgur');
+        }
+        return response.data.data.link;
     } catch (error) {
-        console.error("Error calling Groq API:", error.response?.data || error.message);
-        return "Error generating image description.";
+        throw new Error(`Imgur upload failed: ${error.message}`);
     }
 }
 
+async function generateImageDescription(imageUrl) {
+    const requestBody = {
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "What's in this image?" },
+                { type: "image_url", image_url: { url: imageUrl } }
+            ]
+        }],
+        model: "llama-3.2-11b-vision-preview",
+        temperature: 0.7,
+        max_completion_tokens: 1024,
+        top_p: 1,
+        stream: false
+    };
+    try {
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', requestBody, {
+            headers: {
+                Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (!response.data?.choices?.[0]?.message?.content) {
+            throw new Error('No description generated from Groq API');
+        }
+        return response.data.choices[0].message.content;
+    } catch (error) {
+        throw new Error(`Groq API error: ${error.message}`);
+    }
+}
 
-
-
+async function validateAndOptimizeImage(base64Image) {
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    try {
+        const optimizedBuffer = await sharp(buffer)
+            .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        return optimizedBuffer.toString('base64');
+    } catch (error) {
+        throw new Error('Image optimization failed');
+    }
+}
 
 // Function to enhance short prompts
 function enhancePrompt(prompt) {
@@ -102,32 +126,22 @@ function enhancePrompt(prompt) {
     return enhancedPrompt;
 }
 
+// Existing endpoint for image upload and description generation
 app.post('/upload-and-generate-description', async (req, res) => {
     const { image } = req.body;
-    
-    // Ensure image is provided and is in the correct base64 format
     if (!image || !image.startsWith('data:image/')) {
         return res.status(400).json({ error: 'Valid base64 image data is required' });
     }
-    
-    try {      
-        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
-        const base64Image = image.split(',')[1];
-
-        // Get description from Groq using the properly formatted base64 image
-        const description = await generateImageDescriptionFromBase64(base64Image);
-        
-        // Send the description back to the frontend
+    try {
+        const optimizedImage = await validateAndOptimizeImage(image);
+        const imageUrl = await uploadImageToImgur(optimizedImage);
+        const description = await generateImageDescription(imageUrl);
         res.json({ description });
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: error.message });
     }
 });
-
-
-
-
 
 // FIXED: Improved endpoint to start video generation via LumaAI
 app.post('/generate-video', async (req, res) => {
