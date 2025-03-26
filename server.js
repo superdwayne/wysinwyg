@@ -4,13 +4,11 @@ const cors = require('cors');
 const { LumaAI } = require('lumaai');
 const Groq = require('groq-sdk');
 const axios = require('axios');
-const FormData = require('form-data');
-const sharp = require('sharp');
 const fs = require("fs");
 
 // Initialize Express app and constants
 const app = express();
-const PORT = 5001;
+const PORT = 5002;
 
 console.log('Starting server initialization...');
 
@@ -73,9 +71,6 @@ async function generateImageDescriptionFromBase64(base64Image) {
 }
 
 
-
-
-
 // Function to enhance short prompts
 function enhancePrompt(prompt) {
     // If prompt is already detailed (longer than 30 chars), return as is
@@ -105,22 +100,31 @@ function enhancePrompt(prompt) {
 app.post('/upload-and-generate-description', async (req, res) => {
     const { image } = req.body;
     
-    // Ensure image is provided and is in the correct base64 format
+    // Ensure image is provided in base64 format
     if (!image || !image.startsWith('data:image/')) {
         return res.status(400).json({ error: 'Valid base64 image data is required' });
     }
     
-    try {      
-        // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+    try {
         const base64Image = image.split(',')[1];
-
-        // Get description from Groq using the properly formatted base64 image
+        // Generate the description
         const description = await generateImageDescriptionFromBase64(base64Image);
         
-        // Send the description back to the frontend
+        // Define the webhook payload with the description
+        const payload = {
+            description,
+            timestamp: new Date().toISOString()
+        };
+
+        // // Send the payload to the webhook
+        // await axios.post("https://hvadss.app.n8n.cloud/webhook-test/63d4237e-374b-4319-b0da-49f09119c1b1", payload, {
+        //     headers: { "Content-Type": "application/json" }
+        // });
+
+        // Return the description to the frontend
         res.json({ description });
     } catch (error) {
-        console.error(error);
+        console.error("Error processing image:", error.response?.data || error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -129,10 +133,12 @@ app.post('/upload-and-generate-description', async (req, res) => {
 
 
 
+
+
 // FIXED: Improved endpoint to start video generation via LumaAI
 app.post('/generate-video', async (req, res) => {
     try {
-        let { prompt, model = 'ray-2', negative_prompt = '', resolution = "720p", duration = "5s" } = req.body;
+        let { prompt, model = 'ray-2', negative_prompt = '', resolution = "4k", duration = "5s" } = req.body;
         
         if (!prompt) {
             return res.status(400).json({ error: 'Prompt is required' });
@@ -212,6 +218,8 @@ app.post('/generate-video', async (req, res) => {
         });
     }
 });
+
+
 
 // Enhanced endpoint to poll the status of video generation
 app.get('/video-status/:generationId', async (req, res) => {
