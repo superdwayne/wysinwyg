@@ -162,7 +162,7 @@ const VideoGenerator = () => {
               controls 
               src={videoUrl} 
               width="100%" 
-              autoPlay 
+             
               loop
               playsInline
             />

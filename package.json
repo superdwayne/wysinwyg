@@ -1,4 +1,15 @@
 {
+  "name": "dss-app",
+  "version": "1.0.0",
+  "description": "DSS Application with Backend and Frontend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev:server": "nodemon server.js",
+    "dev:frontend": "cd ray2wisinwyg && npm start",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:frontend\"",
+    "install-all": "npm install && cd ray2wisinwyg && npm install"
+  },
   "dependencies": {
     "@react-three/drei": "^10.0.6",
     "@react-three/fiber": "^9.1.2",
@@ -10,9 +21,13 @@
     "groq-sdk": "^0.15.0",
     "kill-port": "^2.0.1",
     "lumaai": "^1.4.1",
-    "nodemon": "^3.1.9",
+    "multer": "^1.4.4",
+    "nodemon": "^3.1.10",
     "sharp": "^0.33.5",
     "three": "^0.175.0",
     "web-vitals": "^4.2.4"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }

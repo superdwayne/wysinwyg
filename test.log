@@ -1,0 +1,36 @@
+Found videos JSON file at /Users/dwaynepaisley-marshall/doc/PLAYGROUND/DSS/generated_videos.json
+Successfully loaded 7 existing video records from /Users/dwaynepaisley-marshall/doc/PLAYGROUND/DSS/generated_videos.json
+First video ID: ef9acce4-187d-46be-95ef-93548d6a9a95
+Last video ID: ca13e55f-09c5-4acb-8168-e790dd55d070
+Verifying video records integrity...
+Video records integrity report:
+    - Total records: 7
+    - Records with video URLs: 7 (100%)
+    - Records with image URLs: 0 (0%)
+    - Records with titles: 7 (100%)
+    
+Random record sample (#1):
+{
+  "id": "4db52fa4-4ffc-4980-9ae0-0c9328b3fb6b",
+  "url": "https://storage.cdn-luma.com/dream_machi...",
+  "imageUrl": null,
+  "title": "Untitled",
+  "hasPrompt": true
+}
+Starting server initialization...
+Sanitizing video records...
+No changes needed during sanitization.
+LumaAI client initialized successfully
+Groq client initialized successfully
+Server running on http://localhost:5002
+Video generation endpoint available at: http://localhost:5002/generate-video
+Status checking endpoint: http://localhost:5002/video-status/:generationId
+Videos listing endpoint: http://localhost:5002/videos
+Single video with image endpoint: http://localhost:5002/videos/:id
+Videos data stored in: /Users/dwaynepaisley-marshall/doc/PLAYGROUND/DSS/generated_videos.json
+Images stored in: /Users/dwaynepaisley-marshall/doc/PLAYGROUND/DSS/public/saved_images
+Server successfully started on port 5002
+Sanitizing video records...
+No changes needed during sanitization.
+No backup files found. Nothing to delete.
+Setting up automatic cleanup every 24 hours, keeping videos for 30 days
